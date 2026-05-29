@@ -2,10 +2,14 @@ import os
 import psycopg2
 from telegram import Update
 from telegram.ext import (
-    Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    ContextTypes
 )
 
-# 从环境变量读取配置（Railway 里设置）
+# 读取环境变量
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 INVALID_MSG = os.getenv("INVALID_MSG", "未识别指令，请选择底部菜单或输入达人专属码查询优惠~")
@@ -15,13 +19,13 @@ PAYMENT_URL = os.getenv("PAYMENT_URL", "https://your-payment-link.com")
 conn = psycopg2.connect(DATABASE_URL)
 cur = conn.cursor()
 
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text("👋 欢迎！输入你的达人专属码查询优惠")
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("👋 欢迎！输入你的达人专属码查询优惠")
 
-def handle_code(update: Update, context: CallbackContext):
+async def handle_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     code = update.message.text.strip()
-    tg_id = update.message.from_user.id
-    username = update.message.from_user.username or ""
+    tg_id = update.effective_user.id
+    username = update.effective_user.username or ""
 
     # 查优惠码
     cur.execute(
@@ -30,7 +34,7 @@ def handle_code(update: Update, context: CallbackContext):
     )
     row = cur.fetchone()
     if not row:
-        update.message.reply_text(INVALID_MSG)
+        await update.message.reply_text(INVALID_MSG)
         return
 
     desc, rules = row
@@ -51,17 +55,15 @@ def handle_code(update: Update, context: CallbackContext):
         f"优惠内容：\n{rules.replace(',', '• ')}\n\n"
         f"👉 立即下单：{PAYMENT_URL}"
     )
-    update.message.reply_text(text)
+    await update.message.reply_text(text)
 
 def main():
-    updater = Updater(BOT_TOKEN)
-    dp = updater.dispatcher
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_code))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_code))
 
-    updater.start_polling()
-    updater.idle()
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
